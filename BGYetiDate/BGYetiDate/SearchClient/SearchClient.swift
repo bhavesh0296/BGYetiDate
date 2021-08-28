@@ -29,28 +29,83 @@
 import YelpAPI
 import CoreLocation
 
-public class SearchClient: NSObject {
+public class SearchClient: Mediator<SearchColleague> {
+    
+    // MARK: - Instance Properties
+    public weak var delegate: SearchClientDelegate?
+    
+    // MARK: - Object Lifecycle
+    public init(delegate: SearchClientDelegate) {
+        self.delegate = delegate
+        super.init()
+        setupColleagues()
+    }
+    
+    private func setupColleagues() {
+        let restaurantColleague = YelpSearchColleague(category: .restaurants, mediator: self)
+        addColleague(restaurantColleague)
 
-  // MARK: - Instance Properties
-  public weak var delegate: SearchClientDelegate?
+        let barColleague = YelpSearchColleague(category: .bars, mediator: self)
+        addColleague(barColleague)
 
-  // MARK: - Object Lifecycle
-  public init(delegate: SearchClientDelegate) {
-    self.delegate = delegate
-    super.init()
-    setupColleagues()
-  }
+        let movieColleague = YelpSearchColleague(category: .movieTheaters, mediator: self)
+        addColleague(movieColleague)
+    }
+    
+    // MARK: - Instance Methods
+    public func update(userCoordinate: CLLocationCoordinate2D) {
+        invokeColleagues { colleague in
+            colleague.update(userCoordinate: userCoordinate)
+        }
+    }
+    
+    public func reset() {
+        invokeColleagues { colleague in
+            colleague.reset()
+        }
+    }
+}
 
-  private func setupColleagues() {
-    // TODO: - Implement this
-  }
+extension SearchClient: SearchColleagueMediating {
+    public func searchColleague(_ searchColleague: SearchColleague, didSelect business: YLPBusiness) {
+        delegate?.searchClient(self,
+                               didSelect: business,
+                               for: searchColleague.category)
 
-  // MARK: - Instance Methods
-  public func update(userCoordinate: CLLocationCoordinate2D) {
-    // TODO: - Implement this
-  }
+        invokeColleagues(by: searchColleague) { colleagues in
+            colleagues.fellowColleague(colleagues, didSelect: business)
+        }
 
-  public func reset() {
-    // TODO: - Implement this
-  }
+        notifyDelegateIfAllBusinessSelected()
+    }
+
+    private func notifyDelegateIfAllBusinessSelected() {
+        guard let delegate = delegate else { return }
+        var categoryToBusiness: [YelpCategory: YLPBusiness] = [:]
+
+        colleagues.forEach { colleagues in
+            guard let business = colleagues.selectedBusiness else {
+                return
+            }
+            categoryToBusiness[colleagues.category] = business
+        }
+
+        delegate.searchClient(self,
+                              didCompleteSelection: categoryToBusiness)
+
+    }
+
+    public func searchColleague(_ searchColleague: SearchColleague, didCreate viewModels: Set<BusinessMapViewModel>) {
+        delegate?.searchClient(self,
+                               didCreate: viewModels,
+                               for: searchColleague.category)
+    }
+
+    public func searchColleague(_ searchColleague: SearchColleague, searchFailed error: Error?) {
+        delegate?.searchClient(self,
+                               failedFor: searchColleague.category,
+                               error: error)
+    }
+
+    
 }
